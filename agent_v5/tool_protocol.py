@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 from lxml import etree
 
-from agent_v5.xml_protocol import ProtocolError, child_text, extract_required_xml, parse_strict_xml
+from agent_v5.xml_protocol import ProtocolError, child_text, extract_required_xml, parse_strict_xml, strip_noise
 
 
 ALLOWED_TOOLS = {
@@ -24,7 +24,7 @@ class ToolCall:
 
 
 def parse_tool_call_output(text: str) -> tuple[str, ToolCall]:
-    xml_text = extract_required_xml(text, "tool_call")
+    xml_text = extract_tool_call_xml(text)
     root = parse_strict_xml(xml_text)
     if root.tag != "tool_call":
         raise ProtocolError("루트가 <tool_call>이 아닙니다.")
@@ -37,6 +37,17 @@ def parse_tool_call_output(text: str) -> tuple[str, ToolCall]:
         for child in args_root:
             args[child.tag] = " ".join("".join(child.itertext()).split())
     return xml_text, ToolCall(name=name, reason=child_text(root, "reason"), args=args)
+
+
+def extract_tool_call_xml(text: str) -> str:
+    cleaned = strip_noise(text)
+    start_match = re.search(r'(?is)<tool_call\s+name\s*=', cleaned)
+    if start_match:
+        close_index = cleaned.find("</tool_call>", start_match.start())
+        if close_index >= 0:
+            close_index += len("</tool_call>")
+            return cleaned[start_match.start():close_index].strip()
+    return extract_required_xml(cleaned, "tool_call")
 
 
 def observation_xml(tool: str, status: str, message: str = "", **fields: str) -> str:

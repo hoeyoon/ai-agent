@@ -32,24 +32,71 @@ def run_llm(model_key: str, system: str, prompt: str, response_prefix: str = "",
         raise LLMError("Python ollama 모듈이 없습니다. python -m pip install ollama 로 설치하세요.") from exc
 
     try:
-        response = generate_without_thinking(ollama, MODEL_NAMES[model_key], system, prompt, response_prefix, num_predict)
+        response = call_without_thinking(ollama, MODEL_NAMES[model_key], system, prompt, response_prefix, num_predict)
     except Exception:
         ensure_ollama_server(force=True)
         try:
-            response = generate_without_thinking(ollama, MODEL_NAMES[model_key], system, prompt, response_prefix, num_predict)
+            response = call_without_thinking(ollama, MODEL_NAMES[model_key], system, prompt, response_prefix, num_predict)
         except Exception as retry_exc:
             raise LLMError(f"Ollama 실행 실패: {retry_exc}") from retry_exc
 
-    if isinstance(response, dict):
-        text = str(response.get("response", ""))
-    else:
-        text = str(getattr(response, "response", ""))
+    text = response_text(response)
 
     if not text.strip():
         raise LLMError("Ollama 응답이 비어 있습니다.")
     if should_prepend_response_prefix(text, response_prefix):
         text = response_prefix + text
     return text
+
+
+def call_without_thinking(ollama, model_name: str, system: str, prompt: str, response_prefix: str = "", num_predict: int | None = None):
+    if response_prefix:
+        return generate_without_thinking(ollama, model_name, system, prompt, response_prefix, num_predict)
+    return chat_without_thinking(ollama, model_name, system, prompt, num_predict)
+
+
+def chat_without_thinking(ollama, model_name: str, system: str, prompt: str, num_predict: int | None = None):
+    options = {}
+    if num_predict:
+        options["num_predict"] = num_predict
+
+    no_think_prompt = f"/no_think\n{prompt}"
+    base_kwargs = {
+        "model": model_name,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": no_think_prompt},
+        ],
+        "stream": False,
+        "keep_alive": "30m",
+    }
+    if options:
+        base_kwargs["options"] = options
+
+    attempts = [
+        {
+            **base_kwargs,
+            "think": False,
+            "reasoning": "off",
+            "reasoning_budget": 0,
+            "chat_template_kwargs": {"enable_thinking": False},
+            "jinja": True,
+        },
+        {**base_kwargs, "think": False},
+        base_kwargs,
+    ]
+
+    last_error = None
+    for kwargs in attempts:
+        try:
+            return ollama.chat(**kwargs)
+        except TypeError as exc:
+            last_error = exc
+        except Exception as exc:
+            if not is_unsupported_option_error(exc):
+                raise
+            last_error = exc
+    raise last_error or LLMError("Ollama chat 호출 옵션을 구성하지 못했습니다.")
 
 
 def generate_without_thinking(ollama, model_name: str, system: str, prompt: str, response_prefix: str = "", num_predict: int | None = None):
@@ -89,8 +136,29 @@ def generate_without_thinking(ollama, model_name: str, system: str, prompt: str,
                 raise
             last_error = exc
     if response_prefix:
-        return generate_without_thinking(ollama, model_name, system, prompt, "", num_predict)
+        return chat_without_thinking(ollama, model_name, system, prompt, num_predict)
     raise last_error or LLMError("Ollama 호출 옵션을 구성하지 못했습니다.")
+
+
+def response_text(response) -> str:
+    if isinstance(response, dict):
+        if "response" in response:
+            return str(response.get("response", ""))
+        message = response.get("message")
+        if isinstance(message, dict):
+            return str(message.get("content", ""))
+        return ""
+
+    text = getattr(response, "response", None)
+    if text is not None:
+        return str(text)
+    message = getattr(response, "message", None)
+    if isinstance(message, dict):
+        return str(message.get("content", ""))
+    content = getattr(message, "content", None)
+    if content is not None:
+        return str(content)
+    return ""
 
 
 def should_prepend_response_prefix(text: str, response_prefix: str) -> bool:

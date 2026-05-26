@@ -38,7 +38,7 @@ def run_tool_loop(
 
     for step in range(1, max_steps + 1):
         prompt = build_agent_prompt(request, input_path, observations)
-        raw = run_llm(model, AGENT_SYSTEM, prompt, response_prefix="<tool_call ", num_predict=1536)
+        raw = run_llm(model, AGENT_SYSTEM, prompt, response_prefix="", num_predict=1536)
         (run_dir / f"tool_call_step{step}_raw.txt").write_text(raw, encoding="utf-8")
         try:
             tool_xml, call = parse_tool_call_output(raw)
@@ -47,7 +47,7 @@ def run_tool_loop(
                 model,
                 AGENT_SYSTEM,
                 build_retry_prompt(request, input_path, observations, str(exc)),
-                response_prefix="<tool_call ",
+                response_prefix="",
                 num_predict=1536,
             )
             (run_dir / f"tool_call_step{step}_retry_raw.txt").write_text(retry_raw, encoding="utf-8")
