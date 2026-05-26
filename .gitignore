@@ -7,6 +7,7 @@ agent_doc_*/
 
 # Archived old experiments
 archive_old_agents/
+old_agent/
 
 # Local training/runtime logs
 training_logs/
