@@ -1,0 +1,30 @@
+# Large local model files
+*.gguf
+
+# Generated run outputs
+runs_v*/
+agent_doc_*/
+
+# Archived old experiments
+archive_old_agents/
+
+# Local training/runtime logs
+training_logs/
+
+# Local documents / user samples
+*.docx
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# Debug/raw model outputs
+debug_*.txt
+*_raw.txt
+*_retry_raw.txt
+
+# Local temporary archives
+*.zip
+
+# Old usage notes without source
+AGENT_V3_USAGE.md
